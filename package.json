@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0 --port 3000",
-    "build": "tsc && vite build",
+    "predev": "mkdir -p public && cp -f node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/",
+    "dev": "npm run predev && vite --host 0.0.0.0 --port 3000",
+    "prebuild": "mkdir -p public && cp -f node_modules/pdfjs-dist/build/pdf.worker.min.mjs public/",
+    "build": "npm run prebuild && tsc && vite build",
     "preview": "vite preview --port 3000"
   },
   "dependencies": {

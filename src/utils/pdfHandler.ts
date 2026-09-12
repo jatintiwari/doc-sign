@@ -1,10 +1,11 @@
 import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { PlacedSignature } from '../types';
 
-// Set up pdfjs worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerSrc;
+// Set up pdfjs worker using static public worker to support all hosts and domains (localhost, mosaic.local, etc.)
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+}
 
 export interface RenderedPdfPage {
   canvas: HTMLCanvasElement;
