@@ -1,10 +1,16 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import PDFWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { PlacedSignature } from '../types';
 
-// Set up pdfjs worker using static public worker to support all hosts and domains (localhost, mosaic.local, etc.)
+// Initialize PDF.js worker directly via bundled Web Worker to avoid any network / dynamic import issues
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerPort = new PDFWorker();
+  } catch (e) {
+    console.warn('Direct workerPort initialization fallback:', e);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  }
 }
 
 export interface RenderedPdfPage {
