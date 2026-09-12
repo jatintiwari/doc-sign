@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { DocumentUploader } from './components/DocumentUploader';
 import { SignatureControls } from './components/SignatureControls';
+import { AnnotationInspector } from './components/AnnotationInspector';
 import { DocumentCanvas } from './components/DocumentCanvas';
 import { DrawSignatureModal } from './components/DrawSignatureModal';
 import { ExportModal } from './components/ExportModal';
 import {
   DocumentState,
   SignatureProcessingSettings,
-  PlacedSignature,
+  DocumentAnnotation,
   ExportOptions,
 } from './types';
 import {
@@ -55,9 +56,9 @@ export const App: React.FC = () => {
     autoCrop: true,
   });
 
-  // 4. Interactive Placed Signatures Overlay
-  const [placedSignatures, setPlacedSignatures] = useState<PlacedSignature[]>([]);
-  const [selectedSigId, setSelectedSigId] = useState<string | null>(null);
+  // 4. Interactive Annotations Collection (Signatures, Text, Boxes, Arrows)
+  const [annotations, setAnnotations] = useState<DocumentAnnotation[]>([]);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<string | null>(null);
 
   // 5. Modals State
   const [isDrawModalOpen, setIsDrawModalOpen] = useState<boolean>(false);
@@ -83,7 +84,7 @@ export const App: React.FC = () => {
       } finally {
         if (isMounted) setIsProcessingSig(false);
       }
-    }, 80); // Debounce tuning changes
+    }, 80);
 
     return () => {
       isMounted = false;
@@ -160,31 +161,30 @@ export const App: React.FC = () => {
   const handleSaveDrawnSignature = (dataUrl: string) => {
     setRawSignatureUrl(dataUrl);
     setSignatureName('Drawn Signature');
-    // For drawn signatures on white canvas, default settings work great
     setSigSettings((s) => ({ ...s, threshold: 240, preserveColor: false, inkColor: '#084298' }));
   };
 
-  // Add initial signature stamp once both document and processed signature are available
+  // Add initial signature stamp once document and signature are loaded
   useEffect(() => {
-    if (docState && processedSignature && placedSignatures.length === 0) {
+    if (docState && processedSignature && annotations.filter(a => a.type === 'signature').length === 0) {
       addNewSignatureStamp();
     }
   }, [docState?.name, processedSignature?.dataUrl]);
 
   const addNewSignatureStamp = () => {
-    if (!processedSignature || !docState) return;
+    if (!docState) return;
 
     const docAspect = docState.originalWidth / docState.originalHeight;
-    const sigAspect = processedSignature.aspectRatio || 2;
+    const sigAspect = processedSignature?.aspectRatio || 2.5;
 
-    // Desired signature width relative to document width: ~26%
     const sigWidthPercent = 28;
     const sigHeightPercent = (sigWidthPercent / sigAspect) * docAspect;
 
-    const newSig: PlacedSignature = {
+    const newAnn: DocumentAnnotation = {
       id: 'sig_' + Math.random().toString(36).substr(2, 9),
+      type: 'signature',
       pageIndex: docState.currentPage,
-      x: 55, // Place near bottom right by default
+      x: 55,
       y: 75,
       width: sigWidthPercent,
       height: Math.min(30, sigHeightPercent),
@@ -193,8 +193,100 @@ export const App: React.FC = () => {
       aspectRatio: sigAspect,
     };
 
-    setPlacedSignatures((prev) => [...prev, newSig]);
-    setSelectedSigId(newSig.id);
+    setAnnotations((prev) => [...prev, newAnn]);
+    setSelectedAnnotationId(newAnn.id);
+  };
+
+  // Add other annotations (Text, Date, Box, Arrow)
+  const handleAddAnnotation = (type: 'signature' | 'text' | 'box' | 'arrow' | 'date') => {
+    if (!docState) return;
+
+    if (type === 'signature') {
+      addNewSignatureStamp();
+      return;
+    }
+
+    const id = 'ann_' + Math.random().toString(36).substr(2, 9);
+    let newAnn: DocumentAnnotation;
+
+    if (type === 'text') {
+      newAnn = {
+        id,
+        type: 'text',
+        pageIndex: docState.currentPage,
+        x: 35,
+        y: 40,
+        width: 32,
+        height: 7,
+        rotation: 0,
+        opacity: 1,
+        text: 'Click or double-click to type text...',
+        fontSize: 16,
+        fontColor: '#111827',
+        fontFamily: 'sans',
+        isBold: false,
+        isItalic: false,
+        backgroundColor: 'transparent',
+      };
+    } else if (type === 'date') {
+      const today = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+      newAnn = {
+        id,
+        type: 'text',
+        pageIndex: docState.currentPage,
+        x: 35,
+        y: 45,
+        width: 24,
+        height: 6,
+        rotation: 0,
+        opacity: 1,
+        text: `Date: ${today}`,
+        fontSize: 15,
+        fontColor: '#084298',
+        fontFamily: 'sans',
+        isBold: true,
+        isItalic: false,
+        backgroundColor: 'rgba(239, 246, 255, 0.8)',
+      };
+    } else if (type === 'box') {
+      newAnn = {
+        id,
+        type: 'box',
+        pageIndex: docState.currentPage,
+        x: 30,
+        y: 35,
+        width: 35,
+        height: 18,
+        rotation: 0,
+        opacity: 1,
+        strokeColor: '#ef4444',
+        strokeWidth: 3,
+        fillColor: 'transparent',
+        isDashed: false,
+      };
+    } else {
+      // arrow
+      newAnn = {
+        id,
+        type: 'arrow',
+        pageIndex: docState.currentPage,
+        x: 35,
+        y: 50,
+        width: 25,
+        height: 5,
+        rotation: 0,
+        opacity: 1,
+        arrowColor: '#ef4444',
+        arrowThickness: 4,
+      };
+    }
+
+    setAnnotations((prev) => [...prev, newAnn]);
+    setSelectedAnnotationId(newAnn.id);
   };
 
   // Load Demo Sample
@@ -228,7 +320,7 @@ export const App: React.FC = () => {
       invert: false,
       autoCrop: true,
     });
-    setPlacedSignatures([]);
+    setAnnotations([]);
   };
 
   // Reset Everything
@@ -238,28 +330,15 @@ export const App: React.FC = () => {
     setPdfRenderedCanvas(null);
     setRawSignatureUrl(null);
     setProcessedSignature(null);
-    setPlacedSignatures([]);
-    setSelectedSigId(null);
+    setAnnotations([]);
+    setSelectedAnnotationId(null);
   };
 
   // Export Pipeline
   const handleExportDocument = async (options: ExportOptions) => {
-    if (!docState || !processedSignature) return;
+    if (!docState) return;
 
     const exportFileName = `${options.fileName || 'signed-document'}.${options.format}`;
-
-    // Ensure signatures array has items or creates active signature
-    const sigsToExport = placedSignatures.length > 0 ? placedSignatures : [{
-      id: 'default',
-      pageIndex: docState.currentPage,
-      x: 55,
-      y: 75,
-      width: 28,
-      height: 12,
-      rotation: 0,
-      opacity: 1,
-      aspectRatio: processedSignature.aspectRatio || 2.5
-    }];
 
     // A) If document is PDF and user wants PDF output: Lossless vector stamping via pdf-lib
     if (docState.type === 'pdf' && options.format === 'pdf') {
@@ -277,8 +356,8 @@ export const App: React.FC = () => {
 
       const signedPdfBytes = await signPdfDocument(
         pdfBytesToSign,
-        sigsToExport,
-        processedSignature.dataUrl
+        annotations,
+        processedSignature?.dataUrl
       );
       const blob = new Blob([signedPdfBytes], { type: 'application/pdf' });
       downloadBlob(blob, exportFileName);
@@ -286,7 +365,10 @@ export const App: React.FC = () => {
     }
 
     // B) Image or PDF page exported as Composite Canvas (Image or PDF)
-    const sigImg = await loadImage(processedSignature.dataUrl);
+    let sigImg: HTMLImageElement | null = null;
+    if (processedSignature?.dataUrl) {
+      sigImg = await loadImage(processedSignature.dataUrl);
+    }
 
     let baseElement: HTMLCanvasElement | HTMLImageElement;
     if (docState.type === 'pdf') {
@@ -299,7 +381,7 @@ export const App: React.FC = () => {
 
     const compositeCanvas = await createCompositeCanvas(
       baseElement,
-      sigsToExport,
+      annotations,
       sigImg,
       docState.currentPage,
       docState.type === 'image' ? options.scale : 1
@@ -320,6 +402,11 @@ export const App: React.FC = () => {
     }
   };
 
+  const selectedAnnotation = annotations.find((s) => s.id === selectedAnnotationId) ||
+    annotations.find((s) => s.pageIndex === (docState?.currentPage ?? 0)) ||
+    annotations[0] ||
+    null;
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       {/* Hidden file input for quick signature swap */}
@@ -338,7 +425,7 @@ export const App: React.FC = () => {
       {/* Header */}
       <Header
         hasDocument={!!docState}
-        hasSignature={!!processedSignature}
+        hasSignature={!!processedSignature || annotations.length > 0}
         onReset={handleReset}
         onOpenExport={() => setIsExportModalOpen(true)}
         onLoadSample={handleLoadDemoSample}
@@ -348,21 +435,49 @@ export const App: React.FC = () => {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col p-4 lg:p-6 overflow-hidden">
-        {!docState || !processedSignature ? (
+        {!docState ? (
           <DocumentUploader
             onDocumentSelected={handleDocumentFile}
             onSignatureSelected={handleSignatureFile}
             onOpenDrawSignature={() => setIsDrawModalOpen(true)}
             onLoadSample={handleLoadDemoSample}
-            hasDocument={!!docState}
+            hasDocument={false}
             hasSignature={!!processedSignature}
-            documentName={docState?.name}
+            documentName={undefined}
             signatureName={signatureName}
           />
         ) : (
           <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 h-full overflow-hidden">
-            {/* Left/Sidebar: Signature Tuning & Tools (4 columns) */}
+            {/* Left/Sidebar: Signature Tuning / Annotation Inspector (4 cols) */}
             <div className="lg:col-span-4 xl:col-span-3.5 flex flex-col space-y-4 overflow-y-auto max-h-[calc(100vh-100px)] pr-1">
+              {/* Show Annotation Inspector if Text, Box, or Arrow is selected */}
+              {selectedAnnotation && selectedAnnotation.type !== 'signature' ? (
+                <AnnotationInspector
+                  annotation={selectedAnnotation}
+                  onUpdateAnnotation={(updates) => {
+                    setAnnotations((prev) =>
+                      prev.map((s) => (s.id === selectedAnnotation.id ? { ...s, ...updates } : s))
+                    );
+                  }}
+                  onDeleteAnnotation={(id) => {
+                    setAnnotations((prev) => prev.filter((s) => s.id !== id));
+                    if (selectedAnnotationId === id) setSelectedAnnotationId(null);
+                  }}
+                  onDuplicateAnnotation={(ann) => {
+                    const newAnn = {
+                      ...ann,
+                      id: 'ann_' + Math.random().toString(36).substr(2, 9),
+                      x: Math.min(100 - ann.width, ann.x + 3),
+                      y: Math.min(100 - ann.height, ann.y + 3),
+                    };
+                    setAnnotations((prev) => [...prev, newAnn]);
+                    setSelectedAnnotationId(newAnn.id);
+                  }}
+                  docAspect={docState ? docState.originalWidth / docState.originalHeight : 0.75}
+                />
+              ) : null}
+
+              {/* Signature Tuning Card */}
               <SignatureControls
                 settings={sigSettings}
                 onSettingsChange={setSigSettings}
@@ -372,27 +487,18 @@ export const App: React.FC = () => {
                 onAddSignatureToDocument={addNewSignatureStamp}
                 onOpenDrawSignature={() => setIsDrawModalOpen(true)}
                 onTriggerSignatureUpload={() => sigFileInputRef.current?.click()}
-                selectedSignature={
-                  placedSignatures.find((s) => s.id === selectedSigId) ||
-                  placedSignatures.find((s) => s.pageIndex === (docState?.currentPage ?? 0)) ||
-                  placedSignatures[0] ||
-                  null
-                }
+                selectedSignature={selectedAnnotation?.type === 'signature' ? selectedAnnotation : null}
                 onUpdateSelectedSignature={(updates) => {
-                  const targetId =
-                    selectedSigId ||
-                    placedSignatures.find((s) => s.pageIndex === (docState?.currentPage ?? 0))?.id ||
-                    placedSignatures[0]?.id;
-                  if (!targetId) return;
-                  setPlacedSignatures((prev) =>
-                    prev.map((s) => (s.id === targetId ? { ...s, ...updates } : s))
+                  if (!selectedAnnotation || selectedAnnotation.type !== 'signature') return;
+                  setAnnotations((prev) =>
+                    prev.map((s) => (s.id === selectedAnnotation.id ? { ...s, ...updates } : s))
                   );
                 }}
                 docAspect={docState ? docState.originalWidth / docState.originalHeight : 0.75}
               />
             </div>
 
-            {/* Right: Interactive Document Viewer & Placement Canvas (8 columns) */}
+            {/* Right: Interactive Document Viewer & Placement Canvas (8 cols) */}
             <div className="lg:col-span-8 xl:col-span-8.5 flex flex-col h-[calc(100vh-100px)]">
               <DocumentCanvas
                 documentType={docState.type}
@@ -401,11 +507,12 @@ export const App: React.FC = () => {
                 numPages={docState.numPages}
                 currentPage={docState.currentPage}
                 onPageChange={handlePdfPageChange}
-                signatures={placedSignatures}
-                onSignaturesChange={setPlacedSignatures}
-                processedSignatureUrl={processedSignature.dataUrl}
-                selectedSignatureId={selectedSigId}
-                onSelectSignature={setSelectedSigId}
+                annotations={annotations}
+                onAnnotationsChange={setAnnotations}
+                processedSignatureUrl={processedSignature?.dataUrl || null}
+                selectedAnnotationId={selectedAnnotationId}
+                onSelectAnnotation={setSelectedAnnotationId}
+                onAddAnnotation={handleAddAnnotation}
               />
             </div>
           </div>
@@ -427,7 +534,7 @@ export const App: React.FC = () => {
         numPages={docState?.numPages || 1}
         currentPage={docState?.currentPage || 0}
         onExport={handleExportDocument}
-        defaultFileName={docState ? `signed-${docState.name.replace(/\.[^/.]+$/, '')}` : 'signed-document'}
+        defaultFileName={docState ? `annotated-${docState.name.replace(/\.[^/.]+$/, '')}` : 'annotated-document'}
       />
     </div>
   );

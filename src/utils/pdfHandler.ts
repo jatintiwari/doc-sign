@@ -1,7 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import PDFWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker';
-import { PDFDocument, degrees } from 'pdf-lib';
-import { PlacedSignature } from '../types';
+import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
+import { DocumentAnnotation } from '../types';
 
 // Initialize PDF.js worker directly via bundled Web Worker to avoid any network / dynamic import issues
 if (typeof window !== 'undefined') {
@@ -72,10 +72,27 @@ function dataUrlToUint8Array(dataUrl: string): Uint8Array {
   return bytes;
 }
 
+// Convert hex color to pdf-lib rgb
+function hexToPdfRgb(hex?: string) {
+  if (!hex || hex === 'transparent') return undefined;
+  const sanitized = hex.replace('#', '');
+  let r = 0, g = 0, b = 0;
+  if (sanitized.length === 3) {
+    r = parseInt(sanitized[0] + sanitized[0], 16) / 255;
+    g = parseInt(sanitized[1] + sanitized[1], 16) / 255;
+    b = parseInt(sanitized[2] + sanitized[2], 16) / 255;
+  } else if (sanitized.length === 6) {
+    r = parseInt(sanitized.substring(0, 2), 16) / 255;
+    g = parseInt(sanitized.substring(2, 4), 16) / 255;
+    b = parseInt(sanitized.substring(4, 6), 16) / 255;
+  }
+  return rgb(r, g, b);
+}
+
 export async function signPdfDocument(
   originalPdfBytes: ArrayBuffer | Uint8Array,
-  signatures: PlacedSignature[],
-  signatureDataUrl: string
+  annotations: DocumentAnnotation[],
+  signatureDataUrl?: string
 ): Promise<Uint8Array> {
   let bytesToLoad: Uint8Array;
   if (originalPdfBytes instanceof Uint8Array) {
@@ -84,14 +101,29 @@ export async function signPdfDocument(
     bytesToLoad = new Uint8Array(originalPdfBytes.slice(0));
   }
   const pdfDoc = await PDFDocument.load(bytesToLoad);
-  const pngBytes = dataUrlToUint8Array(signatureDataUrl);
-  const embeddedPng = await pdfDoc.embedPng(pngBytes);
+  
+  // Pre-embed standard fonts
+  const fontHelvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontHelveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const fontHelveticaOblique = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+  const fontCourier = await pdfDoc.embedFont(StandardFonts.Courier);
+  const fontTimesRoman = await pdfDoc.embedFont(StandardFonts.TimesRoman);
+
+  let embeddedSignaturePng: any = null;
+  if (signatureDataUrl) {
+    try {
+      const pngBytes = dataUrlToUint8Array(signatureDataUrl);
+      embeddedSignaturePng = await pdfDoc.embedPng(pngBytes);
+    } catch (e) {
+      console.warn('Failed to embed signature PNG:', e);
+    }
+  }
 
   const pages = pdfDoc.getPages();
 
-  // If signatures array is empty, default to page 0 signature
-  const sigs = signatures.length > 0 ? signatures : [{
+  const items = annotations.length > 0 ? annotations : [{
     id: 'default',
+    type: 'signature' as const,
     pageIndex: 0,
     x: 55,
     y: 75,
@@ -102,43 +134,35 @@ export async function signPdfDocument(
     aspectRatio: 2.5
   }];
 
-  for (const sig of sigs) {
-    const pIndex = sig.pageIndex ?? 0;
+  for (const ann of items) {
+    const pIndex = ann.pageIndex ?? 0;
     if (pIndex < 0 || pIndex >= pages.length) continue;
 
     const page = pages[pIndex];
     const { width: pageWidth, height: pageHeight } = page.getSize();
     const pageRot = page.getRotation().angle || 0;
 
-    let targetWidth = (sig.width / 100) * pageWidth;
-    let targetHeight = (sig.height / 100) * pageHeight;
-    let centerX = ((sig.x + sig.width / 2) / 100) * pageWidth;
-    let centerY_FromTop = ((sig.y + sig.height / 2) / 100) * pageHeight;
+    const targetWidth = (ann.width / 100) * pageWidth;
+    const targetHeight = (ann.height / 100) * pageHeight;
+    const centerX = ((ann.x + ann.width / 2) / 100) * pageWidth;
+    const centerY_FromTop = ((ann.y + ann.height / 2) / 100) * pageHeight;
 
     let centerPdfX = centerX;
     let centerPdfY = pageHeight - centerY_FromTop;
 
     // Handle PDF intrinsic page rotation
     if (pageRot === 90) {
-      targetWidth = (sig.width / 100) * pageHeight;
-      targetHeight = (sig.height / 100) * pageWidth;
-      const visualCenterX = ((sig.x + sig.width / 2) / 100) * pageHeight;
-      const visualCenterY = ((sig.y + sig.height / 2) / 100) * pageWidth;
-      centerPdfX = visualCenterY;
-      centerPdfY = visualCenterX;
+      centerPdfX = visualCenter(centerY_FromTop, pageHeight);
+      centerPdfY = visualCenter(centerX, pageWidth);
     } else if (pageRot === 180) {
       centerPdfX = pageWidth - centerX;
       centerPdfY = centerY_FromTop;
     } else if (pageRot === 270) {
-      targetWidth = (sig.width / 100) * pageHeight;
-      targetHeight = (sig.height / 100) * pageWidth;
-      const visualCenterX = ((sig.x + sig.width / 2) / 100) * pageHeight;
-      const visualCenterY = ((sig.y + sig.height / 2) / 100) * pageWidth;
-      centerPdfX = pageWidth - visualCenterY;
-      centerPdfY = pageHeight - visualCenterX;
+      centerPdfX = pageWidth - centerY_FromTop;
+      centerPdfY = pageHeight - centerX;
     }
 
-    const totalRotation = (sig.rotation - pageRot);
+    const totalRotation = (ann.rotation - pageRot);
     const rotRad = (totalRotation * Math.PI) / 180;
     const cos = Math.cos(rotRad);
     const sin = Math.sin(rotRad);
@@ -149,15 +173,125 @@ export async function signPdfDocument(
     const cornerX = centerPdfX - (halfW * cos - halfH * sin);
     const cornerY = centerPdfY - (halfW * sin + halfH * cos);
 
-    page.drawImage(embeddedPng, {
-      x: cornerX,
-      y: cornerY,
-      width: targetWidth,
-      height: targetHeight,
-      opacity: sig.opacity ?? 1,
-      rotate: degrees(-totalRotation),
-    });
+    const type = ann.type || 'signature';
+
+    if (type === 'signature' && embeddedSignaturePng) {
+      page.drawImage(embeddedSignaturePng, {
+        x: cornerX,
+        y: cornerY,
+        width: targetWidth,
+        height: targetHeight,
+        opacity: ann.opacity ?? 1,
+        rotate: degrees(-totalRotation),
+      });
+    } else if (type === 'text') {
+      const text = ann.text || 'Text';
+      const fontSize = Math.max(8, (ann.fontSize || 16) * (pageWidth / 600));
+      
+      let font = fontHelvetica;
+      if (ann.fontFamily === 'mono') font = fontCourier;
+      else if (ann.fontFamily === 'serif') font = fontTimesRoman;
+      else if (ann.isBold) font = fontHelveticaBold;
+      else if (ann.isItalic) font = fontHelveticaOblique;
+
+      const textColor = hexToPdfRgb(ann.fontColor) || rgb(0.1, 0.1, 0.1);
+      const bgColor = hexToPdfRgb(ann.backgroundColor);
+
+      if (bgColor) {
+        page.drawRectangle({
+          x: cornerX,
+          y: cornerY,
+          width: targetWidth,
+          height: targetHeight,
+          color: bgColor,
+          opacity: ann.opacity ?? 1,
+          rotate: degrees(-totalRotation),
+        });
+      }
+
+      // Draw lines
+      const lines = text.split('\n');
+      const lineHeight = fontSize * 1.25;
+      let textY = cornerY + targetHeight - fontSize;
+
+      for (const line of lines) {
+        page.drawText(line, {
+          x: cornerX + 4,
+          y: textY,
+          size: fontSize,
+          font: font,
+          color: textColor,
+          opacity: ann.opacity ?? 1,
+          rotate: degrees(-totalRotation),
+        });
+        textY -= lineHeight;
+      }
+    } else if (type === 'box') {
+      const strokeColor = hexToPdfRgb(ann.strokeColor) || rgb(0.9, 0.2, 0.2);
+      const fillColor = hexToPdfRgb(ann.fillColor);
+      const borderWidth = Math.max(1, (ann.strokeWidth || 3) * (pageWidth / 800));
+
+      page.drawRectangle({
+        x: cornerX,
+        y: cornerY,
+        width: targetWidth,
+        height: targetHeight,
+        borderColor: strokeColor,
+        borderWidth: borderWidth,
+        color: fillColor,
+        opacity: ann.opacity ?? 1,
+        rotate: degrees(-totalRotation),
+      });
+    } else if (type === 'arrow') {
+      const arrowColor = hexToPdfRgb(ann.arrowColor) || rgb(0.9, 0.2, 0.2);
+      const thickness = Math.max(2, (ann.arrowThickness || 4) * (pageWidth / 800));
+
+      // Calculate arrow start and end points in PDF space
+      const startX = centerPdfX - halfW * cos;
+      const startY = centerPdfY - halfW * sin;
+      const endX = centerPdfX + halfW * cos;
+      const endY = centerPdfY + halfW * sin;
+
+      // Draw shaft
+      page.drawLine({
+        start: { x: startX, y: startY },
+        end: { x: endX, y: endY },
+        thickness: thickness,
+        color: arrowColor,
+        opacity: ann.opacity ?? 1,
+      });
+
+      // Draw arrowhead
+      const headLen = Math.min(targetWidth * 0.4, Math.max(10, thickness * 3.5));
+      const headAngle = Math.PI / 6;
+
+      const angle = Math.atan2(endY - startY, endX - startX);
+      const arrowPoint1X = endX - headLen * Math.cos(angle - headAngle);
+      const arrowPoint1Y = endY - headLen * Math.sin(angle - headAngle);
+      const arrowPoint2X = endX - headLen * Math.cos(angle + headAngle);
+      const arrowPoint2Y = endY - headLen * Math.sin(angle + headAngle);
+
+      page.drawLine({
+        start: { x: endX, y: endY },
+        end: { x: arrowPoint1X, y: arrowPoint1Y },
+        thickness: thickness,
+        color: arrowColor,
+        opacity: ann.opacity ?? 1,
+      });
+
+      page.drawLine({
+        start: { x: endX, y: endY },
+        end: { x: arrowPoint2X, y: arrowPoint2Y },
+        thickness: thickness,
+        color: arrowColor,
+        opacity: ann.opacity ?? 1,
+      });
+    }
   }
 
   return await pdfDoc.save();
+}
+
+function visualCenter(val: number, max: number) {
+  return val;
 }

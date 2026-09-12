@@ -22,17 +22,46 @@ export interface SignatureProcessingSettings {
   autoCrop: boolean;
 }
 
-export interface PlacedSignature {
+export type AnnotationType = 'signature' | 'text' | 'box' | 'arrow';
+
+export interface DocumentAnnotation {
   id: string;
-  pageIndex: number; // 0-indexed page in PDF (or 0 for image)
-  x: number; // percentage (0 to 100) or canvas unit
-  y: number; // percentage (0 to 100) or canvas unit
-  width: number; // percentage or canvas unit
-  height: number; // percentage or canvas unit
+  type: AnnotationType;
+  pageIndex: number; // 0-indexed page
+  x: number; // percentage (0 to 100)
+  y: number; // percentage (0 to 100)
+  width: number; // percentage (0 to 100)
+  height: number; // percentage (0 to 100)
   rotation: number; // degrees (0 to 360)
   opacity: number; // 0 to 1
-  aspectRatio: number;
+  aspectRatio?: number;
+
+  // Signature properties
+  signatureDataUrl?: string;
+
+  // Text properties
+  text?: string;
+  fontSize?: number; // pt size (e.g. 14, 18, 24, 32)
+  fontColor?: string; // hex color
+  fontFamily?: 'sans' | 'serif' | 'mono';
+  isBold?: boolean;
+  isItalic?: boolean;
+  backgroundColor?: string; // transparent or hex
+
+  // Box / Rectangle properties
+  strokeColor?: string;
+  fillColor?: string;
+  strokeWidth?: number; // in px
+  isDashed?: boolean;
+
+  // Arrow properties
+  arrowColor?: string;
+  arrowThickness?: number;
+  arrowDirection?: 'right' | 'left' | 'up' | 'down';
 }
+
+// Type alias for backwards compatibility
+export type PlacedSignature = DocumentAnnotation;
 
 export interface ExportOptions {
   format: 'pdf' | 'png' | 'jpeg';
