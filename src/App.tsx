@@ -164,6 +164,46 @@ export const App: React.FC = () => {
     setSigSettings((s) => ({ ...s, threshold: 240, preserveColor: false, inkColor: '#084298' }));
   };
 
+  // Global Clipboard Paste Listener
+  useEffect(() => {
+    const handleGlobalPaste = async (e: ClipboardEvent) => {
+      // Don't intercept paste if focused in input/textarea and text is being pasted
+      const isInput =
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA';
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      let imageFile: File | null = null;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          if (blob) {
+            imageFile = blob;
+            break;
+          }
+        }
+      }
+
+      if (!imageFile) return;
+
+      // If it's an image file pasted, prevent default browser behavior
+      e.preventDefault();
+
+      if (!docState) {
+        // No document loaded yet: load as base document
+        handleDocumentFile(imageFile);
+      } else {
+        // Base document is loaded: load as signature image
+        handleSignatureFile(imageFile);
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, [docState]);
+
   // Add initial signature stamp once document and signature are loaded
   useEffect(() => {
     if (docState && processedSignature && annotations.filter(a => a.type === 'signature').length === 0) {
@@ -197,8 +237,8 @@ export const App: React.FC = () => {
     setSelectedAnnotationId(newAnn.id);
   };
 
-  // Add other annotations (Text, Date, Box, Arrow)
-  const handleAddAnnotation = (type: 'signature' | 'text' | 'box' | 'arrow' | 'date') => {
+  // Add other annotations (Text, Date, Box, Arrow, Redact, Highlight)
+  const handleAddAnnotation = (type: 'signature' | 'text' | 'box' | 'arrow' | 'date' | 'redact' | 'highlight') => {
     if (!docState) return;
 
     if (type === 'signature') {
@@ -252,6 +292,40 @@ export const App: React.FC = () => {
         isItalic: false,
         backgroundColor: 'rgba(239, 246, 255, 0.8)',
       };
+    } else if (type === 'redact') {
+      newAnn = {
+        id,
+        type: 'box',
+        pageIndex: docState.currentPage,
+        x: 30,
+        y: 35,
+        width: 35,
+        height: 8,
+        rotation: 0,
+        opacity: 1,
+        strokeColor: 'transparent',
+        strokeWidth: 0,
+        fillColor: '#000000',
+        fillOpacity: 1.0,
+        isDashed: false,
+      };
+    } else if (type === 'highlight') {
+      newAnn = {
+        id,
+        type: 'box',
+        pageIndex: docState.currentPage,
+        x: 30,
+        y: 35,
+        width: 35,
+        height: 6,
+        rotation: 0,
+        opacity: 1,
+        strokeColor: 'transparent',
+        strokeWidth: 0,
+        fillColor: '#fef08a',
+        fillOpacity: 0.45,
+        isDashed: false,
+      };
     } else if (type === 'box') {
       newAnn = {
         id,
@@ -266,6 +340,7 @@ export const App: React.FC = () => {
         strokeColor: '#ef4444',
         strokeWidth: 3,
         fillColor: 'transparent',
+        fillOpacity: 0,
         isDashed: false,
       };
     } else {

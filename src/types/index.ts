@@ -33,7 +33,7 @@ export interface DocumentAnnotation {
   width: number; // percentage (0 to 100)
   height: number; // percentage (0 to 100)
   rotation: number; // degrees (0 to 360)
-  opacity: number; // 0 to 1
+  opacity: number; // 0 to 1 (overall element opacity)
   aspectRatio?: number;
 
   // Signature properties
@@ -47,11 +47,13 @@ export interface DocumentAnnotation {
   isBold?: boolean;
   isItalic?: boolean;
   backgroundColor?: string; // transparent or hex
+  backgroundOpacity?: number; // 0 to 1
 
-  // Box / Rectangle properties
+  // Box / Rectangle / Redaction properties
   strokeColor?: string;
   fillColor?: string;
   strokeWidth?: number; // in px
+  fillOpacity?: number; // 0 to 1 (1.0 = solid opaque redaction, 0.3 = highlighter)
   isDashed?: boolean;
 
   // Arrow properties

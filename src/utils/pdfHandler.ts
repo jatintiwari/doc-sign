@@ -72,9 +72,22 @@ function dataUrlToUint8Array(dataUrl: string): Uint8Array {
   return bytes;
 }
 
-// Convert hex color to pdf-lib rgb
+// Convert hex or rgba color to pdf-lib rgb
 function hexToPdfRgb(hex?: string) {
   if (!hex || hex === 'transparent') return undefined;
+  
+  // Handle rgba(...) strings
+  if (hex.startsWith('rgba') || hex.startsWith('rgb')) {
+    const match = hex.match(/\d+(\.\d+)?/g);
+    if (match && match.length >= 3) {
+      return rgb(
+        parseFloat(match[0]) / 255,
+        parseFloat(match[1]) / 255,
+        parseFloat(match[2]) / 255
+      );
+    }
+  }
+
   const sanitized = hex.replace('#', '');
   let r = 0, g = 0, b = 0;
   if (sanitized.length === 3) {
@@ -152,8 +165,8 @@ export async function signPdfDocument(
 
     // Handle PDF intrinsic page rotation
     if (pageRot === 90) {
-      centerPdfX = visualCenter(centerY_FromTop, pageHeight);
-      centerPdfY = visualCenter(centerX, pageWidth);
+      centerPdfX = centerY_FromTop;
+      centerPdfY = centerX;
     } else if (pageRot === 180) {
       centerPdfX = pageWidth - centerX;
       centerPdfY = centerY_FromTop;
@@ -196,6 +209,7 @@ export async function signPdfDocument(
 
       const textColor = hexToPdfRgb(ann.fontColor) || rgb(0.1, 0.1, 0.1);
       const bgColor = hexToPdfRgb(ann.backgroundColor);
+      const bgOpacity = ann.backgroundOpacity ?? 0.8;
 
       if (bgColor) {
         page.drawRectangle({
@@ -204,7 +218,7 @@ export async function signPdfDocument(
           width: targetWidth,
           height: targetHeight,
           color: bgColor,
-          opacity: ann.opacity ?? 1,
+          opacity: (ann.opacity ?? 1) * bgOpacity,
           rotate: degrees(-totalRotation),
         });
       }
@@ -229,30 +243,44 @@ export async function signPdfDocument(
     } else if (type === 'box') {
       const strokeColor = hexToPdfRgb(ann.strokeColor) || rgb(0.9, 0.2, 0.2);
       const fillColor = hexToPdfRgb(ann.fillColor);
-      const borderWidth = Math.max(1, (ann.strokeWidth || 3) * (pageWidth / 800));
+      const strokeWidth = ann.strokeWidth !== undefined ? (ann.strokeWidth * (pageWidth / 800)) : 2;
+      const fillOpacity = ann.fillOpacity ?? (fillColor ? 0.35 : 0);
 
-      page.drawRectangle({
-        x: cornerX,
-        y: cornerY,
-        width: targetWidth,
-        height: targetHeight,
-        borderColor: strokeColor,
-        borderWidth: borderWidth,
-        color: fillColor,
-        opacity: ann.opacity ?? 1,
-        rotate: degrees(-totalRotation),
-      });
+      // Draw solid / translucent fill for redactions & highlights
+      if (fillColor && fillOpacity > 0) {
+        page.drawRectangle({
+          x: cornerX,
+          y: cornerY,
+          width: targetWidth,
+          height: targetHeight,
+          color: fillColor,
+          opacity: (ann.opacity ?? 1) * fillOpacity,
+          rotate: degrees(-totalRotation),
+        });
+      }
+
+      // Draw stroke border if width > 0
+      if (strokeWidth > 0 && strokeColor) {
+        page.drawRectangle({
+          x: cornerX,
+          y: cornerY,
+          width: targetWidth,
+          height: targetHeight,
+          borderColor: strokeColor,
+          borderWidth: strokeWidth,
+          borderOpacity: ann.opacity ?? 1,
+          rotate: degrees(-totalRotation),
+        });
+      }
     } else if (type === 'arrow') {
       const arrowColor = hexToPdfRgb(ann.arrowColor) || rgb(0.9, 0.2, 0.2);
       const thickness = Math.max(2, (ann.arrowThickness || 4) * (pageWidth / 800));
 
-      // Calculate arrow start and end points in PDF space
       const startX = centerPdfX - halfW * cos;
       const startY = centerPdfY - halfW * sin;
       const endX = centerPdfX + halfW * cos;
       const endY = centerPdfY + halfW * sin;
 
-      // Draw shaft
       page.drawLine({
         start: { x: startX, y: startY },
         end: { x: endX, y: endY },
@@ -261,7 +289,6 @@ export async function signPdfDocument(
         opacity: ann.opacity ?? 1,
       });
 
-      // Draw arrowhead
       const headLen = Math.min(targetWidth * 0.4, Math.max(10, thickness * 3.5));
       const headAngle = Math.PI / 6;
 
@@ -290,8 +317,4 @@ export async function signPdfDocument(
   }
 
   return await pdfDoc.save();
-}
-
-function visualCenter(val: number, max: number) {
-  return val;
 }

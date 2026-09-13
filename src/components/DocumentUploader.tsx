@@ -43,6 +43,49 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
     }
   };
 
+  const handleDocPaste = (e: React.ClipboardEvent) => {
+    if (e.clipboardData.files && e.clipboardData.files[0]) {
+      e.preventDefault();
+      onDocumentSelected(e.clipboardData.files[0]);
+    }
+  };
+
+  const handleSigPaste = (e: React.ClipboardEvent) => {
+    if (e.clipboardData.files && e.clipboardData.files[0]) {
+      e.preventDefault();
+      onSignatureSelected(e.clipboardData.files[0]);
+    }
+  };
+
+  const handlePasteFromClipboard = async (target: 'doc' | 'sig') => {
+    try {
+      if (!navigator.clipboard?.read) {
+        alert('Direct clipboard button is not supported in this browser. Please press Cmd+V / Ctrl+V instead.');
+        return;
+      }
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((t) => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const file = new File([blob], `clipboard-${Date.now()}.${imageType.split('/')[1] || 'png'}`, {
+            type: imageType,
+          });
+          if (target === 'doc') {
+            onDocumentSelected(file);
+          } else {
+            onSignatureSelected(file);
+          }
+          return;
+        }
+      }
+      alert('No image found in your clipboard. Copy an image first, then try again.');
+    } catch (err) {
+      console.warn('Clipboard read failed:', err);
+      alert('Please press Cmd+V (Mac) or Ctrl+V (Windows) to paste image from clipboard.');
+    }
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto py-8 px-4">
       <div className="text-center mb-8">
@@ -53,18 +96,23 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
           Sign Any Document with Total Precision
         </h2>
         <p className="mt-2 text-sm text-slate-400 max-w-xl mx-auto">
-          Upload your document (PDF or Image) and signature photo. Our engine automatically removes the paper background so your signature blends cleanly.
+          Upload or paste your document (PDF or Image) and signature photo. Our engine automatically removes the paper background so your signature blends cleanly.
         </p>
+        <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-800/80 border border-slate-700/80 text-[11px] text-slate-300">
+          <span className="font-mono bg-slate-700 text-sky-300 px-1.5 py-0.5 rounded font-bold">Cmd+V</span> / <span className="font-mono bg-slate-700 text-sky-300 px-1.5 py-0.5 rounded font-bold">Ctrl+V</span> Supported — Paste images directly from clipboard!
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* INPUT 1: BASE DOCUMENT */}
         <div
+          tabIndex={0}
+          onPaste={handleDocPaste}
           onDragOver={(e) => { e.preventDefault(); setIsDocDragging(true); }}
           onDragLeave={() => setIsDocDragging(false)}
           onDrop={handleDocDrop}
           onClick={() => docInputRef.current?.click()}
-          className={`relative group cursor-pointer rounded-2xl border-2 border-dashed p-7 flex flex-col items-center justify-center text-center transition-all duration-200 ${
+          className={`relative group cursor-pointer rounded-2xl border-2 border-dashed p-7 flex flex-col items-center justify-center text-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-sky-500/50 ${
             hasDocument
               ? 'border-emerald-500/50 bg-emerald-950/10 hover:border-emerald-400'
               : isDocDragging
@@ -99,29 +147,41 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
               Step 1
             </span>
             <h3 className="text-base font-semibold text-white">
-              {hasDocument ? 'Document Loaded' : 'Upload Base Document'}
+              {hasDocument ? 'Document Loaded' : 'Upload or Paste Document'}
             </h3>
             <p className="text-xs text-slate-400 max-w-xs">
               {hasDocument
                 ? documentName
-                : 'Drag & drop PDF or Image (PNG, JPG, WebP) up to 50MB'}
+                : 'Drag & drop, browse files, or press Ctrl+V / Cmd+V to paste'}
             </p>
           </div>
 
-          <div className="mt-5 flex items-center gap-2">
-            <span className="px-3 py-1.5 rounded-lg bg-slate-800 text-xs font-semibold text-slate-300 border border-slate-700 group-hover:border-slate-600 transition flex items-center gap-1.5">
+          <div className="mt-5 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => docInputRef.current?.click()}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 group-hover:border-slate-600 transition flex items-center gap-1.5"
+            >
               <Upload className="w-3.5 h-3.5 text-sky-400" />
               {hasDocument ? 'Replace Document' : 'Browse Files'}
-            </span>
+            </button>
+            <button
+              onClick={() => handlePasteFromClipboard('doc')}
+              className="px-2.5 py-1.5 rounded-lg bg-sky-600/20 hover:bg-sky-600/30 text-xs font-semibold text-sky-300 border border-sky-500/30 transition"
+              title="Paste from clipboard"
+            >
+              Paste
+            </button>
           </div>
         </div>
 
         {/* INPUT 2: SIGNATURE */}
         <div
+          tabIndex={0}
+          onPaste={handleSigPaste}
           onDragOver={(e) => { e.preventDefault(); setIsSigDragging(true); }}
           onDragLeave={() => setIsSigDragging(false)}
           onDrop={handleSigDrop}
-          className={`relative group rounded-2xl border-2 border-dashed p-7 flex flex-col items-center justify-center text-center transition-all duration-200 ${
+          className={`relative group rounded-2xl border-2 border-dashed p-7 flex flex-col items-center justify-center text-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 ${
             hasSignature
               ? 'border-emerald-500/50 bg-emerald-950/10'
               : isSigDragging
@@ -156,12 +216,12 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
               Step 2
             </span>
             <h3 className="text-base font-semibold text-white">
-              {hasSignature ? 'Signature Ready' : 'Upload Signature Image'}
+              {hasSignature ? 'Signature Ready' : 'Upload or Paste Signature'}
             </h3>
             <p className="text-xs text-slate-400 max-w-xs">
               {hasSignature
                 ? signatureName || 'Background auto-removed'
-                : 'Photo of handwritten signature on paper or stamp image'}
+                : 'Upload photo, draw on pad, or press Ctrl+V / Cmd+V'}
             </p>
           </div>
 
@@ -171,11 +231,18 @@ export const DocumentUploader: React.FC<DocumentUploaderProps> = ({
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700 hover:border-slate-600 transition flex items-center gap-1.5"
             >
               <Upload className="w-3.5 h-3.5 text-indigo-400" />
-              {hasSignature ? 'Change Photo' : 'Upload Photo'}
+              {hasSignature ? 'Change Photo' : 'Upload'}
+            </button>
+            <button
+              onClick={() => handlePasteFromClipboard('sig')}
+              className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-xs font-semibold text-indigo-300 border border-indigo-500/30 transition"
+              title="Paste signature from clipboard"
+            >
+              Paste
             </button>
             <button
               onClick={onOpenDrawSignature}
-              className="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-xs font-semibold text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/50 transition flex items-center gap-1.5"
+              className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-xs font-semibold text-indigo-300 border border-indigo-500/30 hover:border-indigo-500/50 transition flex items-center gap-1"
             >
               <PenTool className="w-3.5 h-3.5" />
               Draw Pad

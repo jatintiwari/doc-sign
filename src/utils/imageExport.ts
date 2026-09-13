@@ -65,14 +65,17 @@ export async function createCompositeCanvas(
       ctx.font = `${isItalic}${isBold}${Math.round(fontSize)}px ${fontFamily}`;
       ctx.textBaseline = 'top';
 
-      // Background highlight pill if specified
+      // Background highlight / redaction pill if specified
       if (ann.backgroundColor && ann.backgroundColor !== 'transparent') {
+        const bgOpacity = ann.backgroundOpacity ?? 0.8;
+        ctx.save();
+        ctx.globalAlpha = (ann.opacity ?? 1) * bgOpacity;
         ctx.fillStyle = ann.backgroundColor;
         ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.restore();
       }
 
       ctx.fillStyle = ann.fontColor || '#111827';
-      // Multi-line text support
       const lines = text.split('\n');
       const lineHeight = fontSize * 1.25;
       let lineY = -h / 2 + 4;
@@ -81,22 +84,29 @@ export async function createCompositeCanvas(
         lineY += lineHeight;
       }
     } else if (type === 'box') {
-      const strokeWidth = (ann.strokeWidth || 3) * (baseW / 850);
-      ctx.lineWidth = Math.max(1, strokeWidth);
-      ctx.strokeStyle = ann.strokeColor || '#ef4444';
+      const strokeWidth = (ann.strokeWidth ?? 3) * (baseW / 850);
+      const fillOpacity = ann.fillOpacity ?? (ann.fillColor && ann.fillColor !== 'transparent' ? 0.35 : 0);
 
-      if (ann.isDashed) {
-        ctx.setLineDash([8, 6]);
-      } else {
-        ctx.setLineDash([]);
-      }
-
-      if (ann.fillColor && ann.fillColor !== 'transparent') {
+      // Draw background fill (for redactions at 100% or highlights at <100%)
+      if (ann.fillColor && ann.fillColor !== 'transparent' && fillOpacity > 0) {
+        ctx.save();
+        ctx.globalAlpha = (ann.opacity ?? 1) * fillOpacity;
         ctx.fillStyle = ann.fillColor;
         ctx.fillRect(-w / 2, -h / 2, w, h);
+        ctx.restore();
       }
 
-      ctx.strokeRect(-w / 2, -h / 2, w, h);
+      // Draw border stroke if strokeWidth > 0
+      if (strokeWidth > 0 && ann.strokeColor && ann.strokeColor !== 'transparent') {
+        ctx.lineWidth = Math.max(1, strokeWidth);
+        ctx.strokeStyle = ann.strokeColor;
+        if (ann.isDashed) {
+          ctx.setLineDash([8, 6]);
+        } else {
+          ctx.setLineDash([]);
+        }
+        ctx.strokeRect(-w / 2, -h / 2, w, h);
+      }
     } else if (type === 'arrow') {
       const strokeWidth = (ann.arrowThickness || 4) * (baseW / 850);
       const color = ann.arrowColor || '#ef4444';
@@ -106,22 +116,19 @@ export async function createCompositeCanvas(
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
-      // Draw arrow from left (-w/2, 0) to right (w/2, 0)
       const startX = -w / 2;
       const startY = 0;
       const endX = w / 2;
       const endY = 0;
 
       const headLength = Math.min(w * 0.4, Math.max(12, strokeWidth * 3.5));
-      const headAngle = Math.PI / 6; // 30 degrees
+      const headAngle = Math.PI / 6;
 
-      // Shaft line
       ctx.beginPath();
       ctx.moveTo(startX, startY);
       ctx.lineTo(endX, endY);
       ctx.stroke();
 
-      // Arrow head
       ctx.beginPath();
       ctx.moveTo(endX, endY);
       ctx.lineTo(endX - headLength * Math.cos(headAngle), endY - headLength * Math.sin(headAngle));

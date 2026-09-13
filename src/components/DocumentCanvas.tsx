@@ -14,6 +14,8 @@ import {
   ArrowRight,
   FileSignature,
   Calendar,
+  ShieldAlert,
+  Highlighter,
   Plus
 } from 'lucide-react';
 import { DocumentAnnotation } from '../types';
@@ -30,7 +32,7 @@ interface DocumentCanvasProps {
   processedSignatureUrl: string | null;
   selectedAnnotationId: string | null;
   onSelectAnnotation: (id: string | null) => void;
-  onAddAnnotation: (type: 'signature' | 'text' | 'box' | 'arrow' | 'date') => void;
+  onAddAnnotation: (type: 'signature' | 'text' | 'box' | 'arrow' | 'date' | 'redact' | 'highlight') => void;
 }
 
 export const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
@@ -305,30 +307,48 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
           </button>
 
           <button
-            onClick={() => onAddAnnotation('date')}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 transition shadow-sm"
-            title="Add Date Stamp"
+            onClick={() => onAddAnnotation('redact')}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition shadow-sm"
+            title="Add Solid Blackout Redaction Box"
           >
-            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-            Date
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+            Redact
+          </button>
+
+          <button
+            onClick={() => onAddAnnotation('highlight')}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition shadow-sm"
+            title="Add Yellow Highlighter Box"
+          >
+            <Highlighter className="w-3.5 h-3.5 text-amber-400" />
+            Highlight
           </button>
 
           <button
             onClick={() => onAddAnnotation('box')}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition shadow-sm"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 transition shadow-sm"
             title="Add Box / Rectangle"
           >
-            <Square className="w-3.5 h-3.5 text-amber-400" />
+            <Square className="w-3.5 h-3.5 text-emerald-400" />
             Box
           </button>
 
           <button
             onClick={() => onAddAnnotation('arrow')}
-            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition shadow-sm"
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 transition shadow-sm"
             title="Add Pointer Arrow"
           >
-            <ArrowRight className="w-3.5 h-3.5 text-rose-400" />
+            <ArrowRight className="w-3.5 h-3.5 text-purple-400" />
             Arrow
+          </button>
+
+          <button
+            onClick={() => onAddAnnotation('date')}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 border border-slate-600 transition shadow-sm"
+            title="Add Date Stamp"
+          >
+            <Calendar className="w-3.5 h-3.5 text-sky-400" />
+            Date
           </button>
         </div>
 
@@ -523,6 +543,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                         fontFamily:
                           ann.fontFamily === 'serif' ? 'serif' : ann.fontFamily === 'mono' ? 'monospace' : 'inherit',
                         backgroundColor: ann.backgroundColor || 'transparent',
+                        opacity: ann.backgroundOpacity ?? 1.0,
                       }}
                       className="w-full h-full p-1 whitespace-pre-wrap select-none overflow-hidden rounded"
                     >
@@ -531,17 +552,31 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
                   )
                 )}
 
-                {/* 3. BOX RENDER */}
+                {/* 3. BOX & REDACTION RENDER */}
                 {type === 'box' && (
-                  <div
-                    style={{
-                      borderColor: ann.strokeColor || '#ef4444',
-                      borderWidth: `${ann.strokeWidth || 3}px`,
-                      borderStyle: ann.isDashed ? 'dashed' : 'solid',
-                      backgroundColor: ann.fillColor || 'transparent',
-                    }}
-                    className="w-full h-full rounded-sm"
-                  />
+                  <div className="w-full h-full relative">
+                    {/* Background Fill Layer (for redaction / highlight) */}
+                    {ann.fillColor && ann.fillColor !== 'transparent' && (
+                      <div
+                        style={{
+                          backgroundColor: ann.fillColor,
+                          opacity: ann.fillOpacity ?? 0.35,
+                        }}
+                        className="absolute inset-0 rounded-sm"
+                      />
+                    )}
+                    {/* Border Stroke Layer */}
+                    {(ann.strokeWidth ?? 3) > 0 && ann.strokeColor && ann.strokeColor !== 'transparent' && (
+                      <div
+                        style={{
+                          borderColor: ann.strokeColor,
+                          borderWidth: `${ann.strokeWidth ?? 3}px`,
+                          borderStyle: ann.isDashed ? 'dashed' : 'solid',
+                        }}
+                        className="absolute inset-0 rounded-sm pointer-events-none"
+                      />
+                    )}
+                  </div>
                 )}
 
                 {/* 4. ARROW RENDER */}
@@ -641,7 +676,7 @@ export const DocumentCanvas: React.FC<DocumentCanvasProps> = ({
         <div className="flex items-center gap-3">
           <span>{currentAnnotations.length} Element{currentAnnotations.length === 1 ? '' : 's'} on this page</span>
           <span className="text-slate-600">•</span>
-          <span>Click tools above to add Text, Box, Arrow, Date, or Signatures</span>
+          <span>Click tools above or paste image from clipboard (Ctrl+V / Cmd+V)</span>
         </div>
         <div className="font-mono text-slate-500">100% Client-Side Privacy</div>
       </div>

@@ -12,10 +12,9 @@ import {
   Bold,
   Italic,
   Palette,
-  Sliders,
-  Check,
   AlignLeft,
-  Sparkles
+  ShieldAlert,
+  Highlighter
 } from 'lucide-react';
 import { DocumentAnnotation } from '../types';
 
@@ -33,23 +32,58 @@ const COMMON_COLORS = [
   '#10b981', // Green
   '#f59e0b', // Amber / Orange
   '#111827', // Black
-  '#8b5cf6', // Purple
+  '#ffffff', // White
 ];
 
-const HIGHLIGHT_BG_COLORS = [
-  { name: 'None', val: 'transparent' },
-  { name: 'Yellow', val: 'rgba(254, 240, 138, 0.6)' },
-  { name: 'Green', val: 'rgba(187, 247, 208, 0.6)' },
-  { name: 'Blue', val: 'rgba(191, 219, 254, 0.6)' },
-  { name: 'White', val: '#ffffff' },
-];
-
-const FILL_BG_COLORS = [
-  { name: 'Transparent', val: 'transparent' },
-  { name: 'Light Red', val: 'rgba(254, 202, 202, 0.25)' },
-  { name: 'Light Blue', val: 'rgba(191, 219, 254, 0.25)' },
-  { name: 'Light Yellow', val: 'rgba(254, 240, 138, 0.25)' },
-  { name: 'Solid White', val: 'rgba(255, 255, 255, 0.95)' },
+const REDACTION_PRESETS = [
+  {
+    name: '⬛ Redact Black',
+    fillColor: '#000000',
+    strokeColor: '#000000',
+    fillOpacity: 1.0,
+    strokeWidth: 0,
+    isRedact: true,
+  },
+  {
+    name: '⬜ Redact White',
+    fillColor: '#ffffff',
+    strokeColor: '#cbd5e1',
+    fillOpacity: 1.0,
+    strokeWidth: 1,
+    isRedact: true,
+  },
+  {
+    name: '🟨 Yellow Highlight',
+    fillColor: '#fef08a',
+    strokeColor: '#eab308',
+    fillOpacity: 0.45,
+    strokeWidth: 1,
+    isRedact: false,
+  },
+  {
+    name: '🟩 Green Highlight',
+    fillColor: '#bbf7d0',
+    strokeColor: '#22c55e',
+    fillOpacity: 0.45,
+    strokeWidth: 1,
+    isRedact: false,
+  },
+  {
+    name: '🟦 Blue Highlight',
+    fillColor: '#bfdbfe',
+    strokeColor: '#3b82f6',
+    fillOpacity: 0.45,
+    strokeWidth: 1,
+    isRedact: false,
+  },
+  {
+    name: '🔲 Box Outline',
+    fillColor: 'transparent',
+    strokeColor: '#ef4444',
+    fillOpacity: 0,
+    strokeWidth: 3,
+    isRedact: false,
+  },
 ];
 
 export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
@@ -71,17 +105,31 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
     });
   };
 
+  const isFullRedaction = type === 'box' && (annotation.fillOpacity ?? 0.35) >= 0.98 && annotation.fillColor && annotation.fillColor !== 'transparent';
+
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-3">
         <div className="flex items-center gap-2">
           {type === 'text' && <Type className="w-4 h-4 text-sky-400" />}
-          {type === 'box' && <Square className="w-4 h-4 text-emerald-400" />}
+          {type === 'box' && (
+            isFullRedaction ? (
+              <ShieldAlert className="w-4 h-4 text-rose-400" />
+            ) : (
+              <Square className="w-4 h-4 text-emerald-400" />
+            )
+          )}
           {type === 'arrow' && <ArrowRight className="w-4 h-4 text-rose-400" />}
           {type === 'signature' && <FileSignature className="w-4 h-4 text-indigo-400" />}
           <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-            {type === 'text' ? 'Text Properties' : type === 'box' ? 'Box Properties' : type === 'arrow' ? 'Arrow Properties' : 'Stamp Properties'}
+            {type === 'text'
+              ? 'Text Properties'
+              : type === 'box'
+              ? (isFullRedaction ? 'Redaction Blockout' : 'Box / Highlight Properties')
+              : type === 'arrow'
+              ? 'Arrow Properties'
+              : 'Stamp Properties'}
           </h3>
         </div>
 
@@ -106,7 +154,6 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
       {/* 1. TEXT SPECIFIC CONTROLS */}
       {type === 'text' && (
         <div className="space-y-4">
-          {/* Text Input */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
               <AlignLeft className="w-3.5 h-3.5 text-sky-400" /> Content
@@ -120,7 +167,6 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
             />
           </div>
 
-          {/* Font Size & Styling */}
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <span className="font-semibold text-slate-300">Font Size</span>
@@ -137,7 +183,6 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
             />
           </div>
 
-          {/* Bold, Italic & Font Family */}
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <button
@@ -185,7 +230,6 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
             </div>
           </div>
 
-          {/* Text Color Picker */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5 text-sky-400" /> Text Color
@@ -208,82 +252,160 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
                 value={annotation.fontColor || '#111827'}
                 onChange={(e) => onUpdateAnnotation({ fontColor: e.target.value })}
                 className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0 ml-auto"
-                title="Custom color"
               />
             </div>
           </div>
 
-          {/* Background Pill Highlight */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-300 block">
-              Background Highlight
-            </label>
-            <div className="grid grid-cols-5 gap-1.5 text-[11px]">
-              {HIGHLIGHT_BG_COLORS.map((bg) => (
-                <button
-                  key={bg.name}
-                  onClick={() => onUpdateAnnotation({ backgroundColor: bg.val })}
-                  className={`py-1 rounded-lg border text-center font-medium transition ${
-                    (annotation.backgroundColor || 'transparent') === bg.val
-                      ? 'border-sky-500 bg-sky-500/20 text-sky-300 font-bold'
-                      : 'border-slate-800 bg-slate-800/80 text-slate-400'
-                  }`}
-                >
-                  {bg.name}
-                </button>
-              ))}
+          {/* Background Pill & Opacity */}
+          <div className="space-y-2 pt-2 border-t border-slate-800">
+            <div className="flex justify-between text-xs">
+              <span className="font-semibold text-slate-300">Background Highlight Fill</span>
+              <span className="font-mono text-slate-400">{Math.round((annotation.backgroundOpacity ?? 0.8) * 100)}%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={annotation.backgroundColor || '#ffffff'}
+                onChange={(e) => onUpdateAnnotation({ backgroundColor: e.target.value })}
+                className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
+              />
+              <input
+                type="range"
+                min="0"
+                max="1.0"
+                step="0.05"
+                value={annotation.backgroundOpacity ?? 0.8}
+                onChange={(e) => onUpdateAnnotation({ backgroundOpacity: Number(e.target.value) })}
+                className="flex-1 h-1.5 bg-slate-700 rounded appearance-none cursor-pointer accent-sky-400"
+              />
+              <button
+                onClick={() => onUpdateAnnotation({ backgroundColor: 'transparent', backgroundOpacity: 0 })}
+                className="px-2 py-1 rounded-lg bg-slate-800 text-[11px] text-slate-400 hover:text-white"
+              >
+                Clear
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 2. BOX SPECIFIC CONTROLS */}
+      {/* 2. BOX & REDACTION SPECIFIC CONTROLS */}
       {type === 'box' && (
         <div className="space-y-4">
-          {/* Border Color */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-              <Palette className="w-3.5 h-3.5 text-emerald-400" /> Border Color
+          {/* Quick Redaction / Highlight Presets */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Highlighter className="w-3.5 h-3.5 text-amber-400" /> Presets & Redaction
+              </span>
+              {isFullRedaction && (
+                <span className="text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                  100% Solid Redaction
+                </span>
+              )}
             </label>
-            <div className="flex items-center gap-2">
-              {COMMON_COLORS.map((c) => (
+            <div className="grid grid-cols-2 gap-2">
+              {REDACTION_PRESETS.map((p) => (
                 <button
-                  key={c}
-                  onClick={() => onUpdateAnnotation({ strokeColor: c })}
-                  style={{ backgroundColor: c }}
-                  className={`w-6 h-6 rounded-full border-2 transition ${
-                    (annotation.strokeColor || '#ef4444').toLowerCase() === c.toLowerCase()
-                      ? 'border-white scale-110 shadow'
-                      : 'border-transparent opacity-80'
+                  key={p.name}
+                  onClick={() =>
+                    onUpdateAnnotation({
+                      fillColor: p.fillColor,
+                      strokeColor: p.strokeColor,
+                      fillOpacity: p.fillOpacity,
+                      strokeWidth: p.strokeWidth,
+                    })
+                  }
+                  className={`py-1.5 px-2 rounded-xl border text-xs font-semibold text-left transition flex items-center justify-between ${
+                    annotation.fillColor === p.fillColor && Math.abs((annotation.fillOpacity ?? 0.35) - p.fillOpacity) < 0.1
+                      ? 'border-sky-500 bg-sky-500/20 text-white shadow-sm'
+                      : 'border-slate-800 bg-slate-800/80 hover:bg-slate-700 text-slate-300'
                   }`}
-                />
+                >
+                  <span>{p.name}</span>
+                </button>
               ))}
-              <input
-                type="color"
-                value={annotation.strokeColor || '#ef4444'}
-                onChange={(e) => onUpdateAnnotation({ strokeColor: e.target.value })}
-                className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0 ml-auto"
-              />
             </div>
           </div>
 
-          {/* Border Thickness & Style */}
-          <div className="space-y-2">
+          {/* Background / Fill Opacity Slider for Redaction vs Highlight */}
+          <div className="space-y-2 p-3 rounded-xl bg-slate-800/60 border border-slate-700/60">
             <div className="flex justify-between text-xs">
-              <span className="font-semibold text-slate-300">Border Width</span>
-              <span className="font-mono text-emerald-400">{annotation.strokeWidth || 3}px</span>
+              <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                <Layers className="w-3.5 h-3.5 text-sky-400" />
+                Fill Opacity (Redact &lt;&gt; Highlight)
+              </span>
+              <span className="font-mono font-bold text-sky-300">
+                {Math.round((annotation.fillOpacity ?? 0.35) * 100)}%
+              </span>
             </div>
             <input
               type="range"
-              min="1"
+              min="0"
+              max="1.0"
+              step="0.05"
+              value={annotation.fillOpacity ?? 0.35}
+              onChange={(e) => onUpdateAnnotation({ fillOpacity: Number(e.target.value) })}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
+            />
+            <div className="flex justify-between text-[10px] text-slate-400 font-medium">
+              <span>0% (Transparent)</span>
+              <span>45% (Highlighter)</span>
+              <span className="text-rose-400 font-bold">100% (Solid Redact)</span>
+            </div>
+          </div>
+
+          {/* Custom Fill Color & Border Color */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Fill Color */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 block">Fill Color</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={annotation.fillColor && annotation.fillColor !== 'transparent' ? annotation.fillColor : '#000000'}
+                  onChange={(e) => onUpdateAnnotation({ fillColor: e.target.value, fillOpacity: annotation.fillOpacity || 0.45 })}
+                  className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
+                />
+                <span className="text-xs text-slate-400 font-mono">
+                  {annotation.fillColor || 'None'}
+                </span>
+              </div>
+            </div>
+
+            {/* Border Color */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-300 block">Border Color</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={annotation.strokeColor || '#ef4444'}
+                  onChange={(e) => onUpdateAnnotation({ strokeColor: e.target.value })}
+                  className="w-7 h-7 rounded-lg cursor-pointer bg-transparent border-0"
+                />
+                <span className="text-xs text-slate-400 font-mono">
+                  {annotation.strokeColor || 'None'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Border Thickness & Dashed Toggle */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="font-semibold text-slate-300">Border Thickness</span>
+              <span className="font-mono text-emerald-400">{annotation.strokeWidth ?? 3}px</span>
+            </div>
+            <input
+              type="range"
+              min="0"
               max="10"
-              value={annotation.strokeWidth || 3}
+              value={annotation.strokeWidth ?? 3}
               onChange={(e) => onUpdateAnnotation({ strokeWidth: Number(e.target.value) })}
               className="w-full h-1.5 bg-slate-700 rounded appearance-none cursor-pointer accent-emerald-400"
             />
           </div>
 
-          {/* Dashed Toggle */}
           <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
             <input
               type="checkbox"
@@ -291,37 +413,14 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
               onChange={(e) => onUpdateAnnotation({ isDashed: e.target.checked })}
               className="rounded bg-slate-800 border-slate-700 text-emerald-500 focus:ring-0"
             />
-            <span>Dashed outline</span>
+            <span>Dashed outline border</span>
           </label>
-
-          {/* Fill Color */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-slate-300 block">
-              Box Fill Color
-            </label>
-            <div className="grid grid-cols-3 gap-1.5 text-[11px]">
-              {FILL_BG_COLORS.map((f) => (
-                <button
-                  key={f.name}
-                  onClick={() => onUpdateAnnotation({ fillColor: f.val })}
-                  className={`py-1 px-1 rounded-lg border text-center font-medium transition ${
-                    (annotation.fillColor || 'transparent') === f.val
-                      ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300 font-bold'
-                      : 'border-slate-800 bg-slate-800/80 text-slate-400'
-                  }`}
-                >
-                  {f.name}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
       {/* 3. ARROW SPECIFIC CONTROLS */}
       {type === 'arrow' && (
         <div className="space-y-4">
-          {/* Arrow Color */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
               <Palette className="w-3.5 h-3.5 text-rose-400" /> Arrow Color
@@ -348,7 +447,6 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
             </div>
           </div>
 
-          {/* Arrow Line Thickness */}
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
               <span className="font-semibold text-slate-300">Arrow Thickness</span>
@@ -368,11 +466,10 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
 
       {/* UNIVERSAL SIZE, ROTATION & OPACITY CONTROLS */}
       <div className="pt-3 border-t border-slate-800 space-y-3.5">
-        {/* Width / Size Slider */}
         <div className="space-y-1.5">
           <div className="flex justify-between text-xs">
             <span className="font-semibold text-slate-300 flex items-center gap-1">
-              <Scaling className="w-3.5 h-3.5 text-sky-400" /> Element Scale
+              <Scaling className="w-3.5 h-3.5 text-sky-400" /> Scale / Width
             </span>
             <span className="font-mono text-slate-400">{Math.round(annotation.width)}%</span>
           </div>
@@ -400,7 +497,6 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
           </div>
         </div>
 
-        {/* Rotation & Opacity Grid */}
         <div className="grid grid-cols-2 gap-3 text-xs">
           <div className="space-y-1">
             <div className="flex justify-between text-slate-400 text-[11px]">
@@ -422,7 +518,7 @@ export const AnnotationInspector: React.FC<AnnotationInspectorProps> = ({
           <div className="space-y-1">
             <div className="flex justify-between text-slate-400 text-[11px]">
               <span className="flex items-center gap-1">
-                <Layers className="w-3 h-3 text-sky-400" /> Opacity
+                <Layers className="w-3 h-3 text-sky-400" /> Layer Opacity
               </span>
               <span className="font-mono text-slate-300">{Math.round((annotation.opacity ?? 1) * 100)}%</span>
             </div>
